@@ -26,7 +26,7 @@ describe('<App />', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: /health/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /health/i })).toBeInTheDocument();
     expect(screen.getByText(/web:/i)).toBeInTheDocument();
   });
 });
