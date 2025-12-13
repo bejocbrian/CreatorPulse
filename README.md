@@ -90,9 +90,9 @@ docker compose --profile app up --build
 - Format check: `pnpm format`
 - Typecheck: `pnpm typecheck`
 - Tests: `pnpm test`
-- CI aggregate (lint + typecheck + test): `pnpm ci`
+- CI aggregate (lint + typecheck + test): `pnpm run ci`
 
 Git hooks:
 
 - pre-commit runs `lint-staged`
-- pre-push runs `pnpm ci`
+- pre-push runs `pnpm run ci`
