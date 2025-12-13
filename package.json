@@ -1,0 +1,14 @@
+{
+  "name": "auth-backend-api",
+  "private": true,
+  "workspaces": [
+    "backend"
+  ],
+  "scripts": {
+    "build": "npm -w backend run build",
+    "dev": "npm -w backend run dev",
+    "lint": "npm -w backend run lint",
+    "typecheck": "npm -w backend run typecheck",
+    "test": "npm -w backend run test"
+  }
+}
