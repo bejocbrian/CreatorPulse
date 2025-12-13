@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  firstName     String?
+  lastName      String?
+  role          UserRole @default(MEMBER)
+  organizationId String?
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  createdChecklists Checklist[] @relation("ChecklistCreator")
+  
+  @@index([organizationId])
+  @@index([email])
+}
+
+model Organization {
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  subscriptionTier  SubscriptionTier @default(FREE)
+  stripeCustomerId  String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  users         User[]
+  subscription  Subscription?
+  documents     Document[]
+  checklists    Checklist[]
+  usageMetrics  UsageMetrics[]
+
+  @@index([slug])
+  @@index([stripeCustomerId])
+}
+
+model Subscription {
+  id                    String   @id @default(uuid())
+  organizationId        String   @unique
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  stripeSubscriptionId  String   @unique
+  stripePriceId         String
+  stripeProductId       String
+  status                SubscriptionStatus
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean  @default(false)
+  canceledAt            DateTime?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  invoices              Invoice[]
+
+  @@index([organizationId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+}
+
+model Invoice {
+  id                    String   @id @default(uuid())
+  subscriptionId        String
+  subscription          Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  stripeInvoiceId       String   @unique
+  amount                Int
+  currency              String   @default("usd")
+  status                InvoiceStatus
+  hostedInvoiceUrl      String?
+  invoicePdfUrl         String?
+  pdfStoragePath        String?
+  
+  paidAt                DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([subscriptionId])
+  @@index([stripeInvoiceId])
+  @@index([status])
+}
+
+model Document {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  fileUrl         String
+  s3Key           String
+  fileSize        Int
+  mimeType        String
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  checklistItems  ChecklistItem[]
+
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model Checklist {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User     @relation("ChecklistCreator", fields: [createdById], references: [id])
+  
+  title           String
+  description     String?
+  status          ChecklistStatus @default(ACTIVE)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+
+  items           ChecklistItem[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model ChecklistItem {
+  id              String   @id @default(uuid())
+  checklistId     String
+  checklist       Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?
+  completed       Boolean  @default(false)
+  order           Int
+  documentId      String?
+  document        Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+
+  @@index([checklistId])
+  @@index([documentId])
+}
+
+model UsageMetrics {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  documentCount       Int      @default(0)
+  storageUsedBytes    BigInt   @default(0)
+  activeChecklistCount Int     @default(0)
+  totalChecklistCount Int      @default(0)
+  
+  period              DateTime
+  createdAt           DateTime @default(now())
+
+  @@unique([organizationId, period])
+  @@index([organizationId])
+  @@index([period])
+}
+
+enum UserRole {
+  ADMIN
+  OWNER
+  MEMBER
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAST_DUE
+  TRIALING
+  UNPAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  UNCOLLECTIBLE
+  VOID
+}
+
+enum ChecklistStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}

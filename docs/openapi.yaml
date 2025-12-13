@@ -1,0 +1,625 @@
+openapi: 3.0.3
+info:
+  title: Checklist Subscription API
+  description: |
+    Backend API for checklist management with Stripe subscription integration, 
+    usage metrics tracking, and document management.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@checklistapp.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+  - url: https://api.checklistapp.com/api/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Subscriptions
+    description: Stripe subscription management
+  - name: Usage
+    description: Usage metrics and limits
+  - name: Health
+    description: Health check endpoints
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [ADMIN, OWNER, MEMBER]
+        organizationId:
+          type: string
+          format: uuid
+          nullable: true
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        subscriptionTier:
+          type: string
+          enum: [FREE, STARTER, PROFESSIONAL, ENTERPRISE]
+        stripeCustomerId:
+          type: string
+          nullable: true
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        stripeSubscriptionId:
+          type: string
+        stripePriceId:
+          type: string
+        stripeProductId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, CANCELED, INCOMPLETE, INCOMPLETE_EXPIRED, PAST_DUE, TRIALING, UNPAID]
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        cancelAtPeriodEnd:
+          type: boolean
+
+    UsageMetrics:
+      type: object
+      properties:
+        documentCount:
+          type: integer
+        storageUsedBytes:
+          type: integer
+          format: int64
+        storageUsedMB:
+          type: integer
+        activeChecklistCount:
+          type: integer
+        totalChecklistCount:
+          type: integer
+
+    UsageLimits:
+      type: object
+      properties:
+        usage:
+          $ref: '#/components/schemas/UsageMetrics'
+        limits:
+          type: object
+          properties:
+            documents:
+              type: integer
+            storageMB:
+              type: integer
+            checklists:
+              type: integer
+        isWithinLimits:
+          type: object
+          properties:
+            documents:
+              type: boolean
+            storage:
+              type: boolean
+            checklists:
+              type: boolean
+        withinAllLimits:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        statusCode:
+          type: integer
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new user account and optionally an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                organizationName:
+                  type: string
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+        '400':
+          description: Invalid request or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticate user and receive JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stripe/create-checkout-session:
+    post:
+      tags:
+        - Subscriptions
+      summary: Create Stripe checkout session
+      description: Create a Stripe Checkout session to subscribe to a plan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - priceId
+              properties:
+                priceId:
+                  type: string
+                  description: Stripe price ID for the subscription plan
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stripe/create-portal-session:
+    post:
+      tags:
+        - Subscriptions
+      summary: Create Stripe customer portal session
+      description: Create a session to access the Stripe Customer Portal for subscription management
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No active subscription found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stripe/subscription:
+    get:
+      tags:
+        - Subscriptions
+      summary: Get current subscription
+      description: Retrieve the current subscription details for the organization
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription:
+                    $ref: '#/components/schemas/Subscription'
+                    nullable: true
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stripe/cancel-subscription:
+    post:
+      tags:
+        - Subscriptions
+      summary: Cancel subscription
+      description: Cancel the current subscription
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                immediate:
+                  type: boolean
+                  default: false
+                  description: Cancel immediately or at period end
+      responses:
+        '200':
+          description: Cancellation requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No active subscription found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stripe/webhook:
+    post:
+      tags:
+        - Subscriptions
+      summary: Stripe webhook handler
+      description: Endpoint to receive Stripe webhook events
+      parameters:
+        - in: header
+          name: stripe-signature
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe event object
+      responses:
+        '200':
+          description: Webhook received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '400':
+          description: Invalid webhook
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /usage/current:
+    get:
+      tags:
+        - Usage
+      summary: Get current usage
+      description: Retrieve current usage metrics for the organization
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current usage metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageMetrics'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /usage/limits:
+    get:
+      tags:
+        - Usage
+      summary: Check usage limits
+      description: Check current usage against subscription tier limits
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usage limits check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageLimits'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /usage/history:
+    get:
+      tags:
+        - Usage
+      summary: Get usage history
+      description: Retrieve historical usage metrics
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: days
+          schema:
+            type: integer
+            default: 30
+          description: Number of days of history to retrieve
+      responses:
+        '200':
+          description: Usage history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    organizationId:
+                      type: string
+                      format: uuid
+                    documentCount:
+                      type: integer
+                    storageUsedBytes:
+                      type: string
+                    activeChecklistCount:
+                      type: integer
+                    totalChecklistCount:
+                      type: integer
+                    period:
+                      type: string
+                      format: date-time
+                    createdAt:
+                      type: string
+                      format: date-time
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /usage/record:
+    post:
+      tags:
+        - Usage
+      summary: Record usage metrics
+      description: Manually trigger recording of current usage metrics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usage metrics recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageMetrics'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check API health and database connectivity
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                  database:
+                    type: string
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  database:
+                    type: string
+                  error:
+                    type: string
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Check if service is ready to accept traffic
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: Check if service is alive
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alive:
+                    type: boolean
