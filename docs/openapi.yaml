@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: Documents Service API
+  version: 0.1.0
+servers:
+  - url: http://localhost:3000
+components:
+  securitySchemes:
+    UserIdHeader:
+      type: apiKey
+      in: header
+      name: X-User-Id
+  schemas:
+    Folder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        parentFolderId: { type: string, format: uuid, nullable: true }
+        propertyId: { type: string, format: uuid, nullable: true }
+        transactionId: { type: string, format: uuid, nullable: true }
+        transactionStage: { type: string, nullable: true }
+        ownerUserId: { type: string }
+    Document:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        folderId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        currentVersionId: { type: string, format: uuid, nullable: true }
+    DocumentVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        versionNumber: { type: integer }
+        filename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, nullable: true }
+        s3Bucket: { type: string }
+        s3Key: { type: string }
+security:
+  - UserIdHeader: []
+paths:
+  /health:
+    get:
+      responses:
+        '200':
+          description: OK
+  /folders:
+    post:
+      summary: Create folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                parentFolderId: { type: string, format: uuid, nullable: true }
+                propertyId: { type: string, format: uuid, nullable: true }
+                transactionId: { type: string, format: uuid, nullable: true }
+                transactionStage: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+    get:
+      summary: List folders
+      parameters:
+        - in: query
+          name: parentFolderId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: transactionId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: propertyId
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+  /folders/{folderId}:
+    get:
+      summary: Get folder
+      parameters:
+        - in: path
+          name: folderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+    patch:
+      summary: Update folder
+      parameters:
+        - in: path
+          name: folderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+    delete:
+      summary: Delete folder
+      parameters:
+        - in: path
+          name: folderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deleted }
+  /folders/{folderId}/permissions:
+    get:
+      summary: List folder sharing permissions
+      parameters:
+        - in: path
+          name: folderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Invite collaborator to folder
+      parameters:
+        - in: path
+          name: folderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+  /documents/upload-url:
+    post:
+      summary: Create document + version 1 and get a signed S3 upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [folderId, title, filename, contentType, sizeBytes]
+              properties:
+                folderId: { type: string, format: uuid }
+                title: { type: string }
+                description: { type: string }
+                filename: { type: string }
+                contentType: { type: string }
+                sizeBytes: { type: integer }
+      responses:
+        '201': { description: Created }
+  /documents/{documentId}/versions:
+    get:
+      summary: List document versions
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+  /documents/{documentId}/versions/upload-url:
+    post:
+      summary: Create new document version and get a signed S3 upload URL
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+  /documents/{documentId}/versions/{versionId}/download-url:
+    get:
+      summary: Get a signed S3 download URL
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: versionId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+  /documents/{documentId}/notes:
+    get:
+      summary: List notes
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Add a note
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+  /checklist-templates:
+    post:
+      summary: Create checklist template
+      responses:
+        '201': { description: Created }
+    get:
+      summary: List checklist templates
+      responses:
+        '200': { description: OK }
+  /transactions/{transactionId}/checklists:
+    post:
+      summary: Assign checklist template to a transaction
+      parameters:
+        - in: path
+          name: transactionId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+  /documents/{documentId}/esign/docusign/envelopes:
+    post:
+      summary: Create e-sign envelope placeholder
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+  /webhooks/docusign:
+    post:
+      summary: DocuSign webhook handler placeholder
+      security: []
+      responses:
+        '200': { description: OK }
